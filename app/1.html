@@ -1,0 +1,146 @@
+npx create-next-app@latest huggingface-demo
+npx shadcn-ui@latest init
+npx shadcn-ui@latest add textarea
+
+
+show hugging face model
+
+  npm i "@xenova/transformers" --save
+  import { pipeline, env } from "@xenova/transformers";
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      sharp$: false,
+      "onnxruntime-node$": false,
+    };
+    return config;
+  },
+
+
+
+
+
+
+  useEffect(() => {
+    const run = async () => {
+      let pipe = await pipeline("sentiment-analysis", "Xenova/distilbert-base-uncased-finetuned-sst-2-english");
+      let out = await pipe("I hate transformers!");
+    };
+
+    run();
+  }, []);
+
+  
+
+
+import { pipeline, env } from "@xenova/transformers";
+
+// Skip local model check
+env.allowLocalModels = false;
+
+
+const PipelineSingleton = (function () {
+    let instance;
+
+    function createInstance() {
+        return pipeline("sentiment-analysis", "Xenova/distilbert-base-uncased-finetuned-sst-2-english");
+    }
+
+    return {
+        getInstance: function () {
+            if (!instance) {
+                instance = createInstance();
+            }
+            return instance;
+        }
+    };
+})();
+
+
+//worker communication
+// const instance1 = PipelineSingleton.getInstance();
+
+// Listen for messages from the main thread
+self.addEventListener("message", async (event) => {
+  
+  let classifier = await PipelineSingleton.getInstance((x) => {
+    console.log(x);
+  });
+
+  
+  let output = await classifier(event.data.text);
+
+  self.postMessage({
+    status: "complete",
+    output: output,
+  });
+});
+
+
+//communication
+const worker = useRef(null);
+
+if (!worker.current) {
+    worker.current = new Worker(new URL("./worker.js", import.meta.url), {
+      type: "module",
+    });
+  }
+
+  worker.current.postMessage({ text });
+
+  
+
+  self.addEventListener("message", async (event) => {
+    // Retrieve the classification pipeline. When called for the first time,
+    // this will load the pipeline and save it for future use.
+    let classifier = await PipelineSingleton.getInstance();
+    let output = await classifier(event.data.text);
+
+    self.postMessage({
+        status: "complete",
+        output: output,
+    });
+})
+
+const onMessageReceived = (event) => {
+    if (event.data.status === "complete") {
+      console.log(event.data.output);
+    }
+ };
+
+worker.current.addEventListener("message", onMessageReceived);
+  
+return () =>
+    worker.current.removeEventListener("message", onMessageReceived);
+
+
+
+<div>
+    <div className="w-full lg:grid lg:min-h-[600px] lg:grid-cols-2 xl:min-h-[800px]">
+      <div className="flex items-center justify-center py-12">
+        <div className="mx-auto grid w-[450px] h-2/3 gap-1">
+          <div className="relative overflow-hidden rounded-lg border bg-background focus-within:ring-1 focus-within:ring-ring">
+            <Textarea
+              id="message"
+              placeholder="Type your message here..."
+              className=" h-full *:resize-none border-0 p-3 shadow-none focus-visible:ring-0"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-center -mt-16 h-full bg-gray-50">
+        <pre className="text-yellow-900">Prediction will appear here</pre>
+      </div>
+    </div>
+  </div>
+
+onChange={(e) => {
+    if (worker.current) {
+        console.log("Classifying...", text);
+        worker.current.postMessage({ text });
+      }
+  }}
+
+
+  setResult(e.data.output[0]);
